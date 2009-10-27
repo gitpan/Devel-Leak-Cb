@@ -22,6 +22,10 @@ README
 t/00-load.t
 t/01-production.t
 t/02-devel.t
+t/03-eval-prod.t
+t/04-eval-dev.t
+t/05-named-var.t
+t/06-named-var-p.t
 t/90-examples.t
 t/97-changes.t
 t/98-fixme.t

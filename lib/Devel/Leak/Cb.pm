@@ -12,17 +12,17 @@ Devel::Leak::Cb - Detect leaked callbacks
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =cut
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =head1 SYNOPSIS
 
     use Devel::Leak::Cb;
     
-    AnyEvent->timer( cb => cb {
+    AnyEvent->timer( after => 1, cb => cb {
         ...
     });
     
@@ -44,6 +44,32 @@ If C<DEBUG_CB> > 1 and L<Devel::FindRef> is installed, then output will include 
 
 =head2 cb {}
 
+Create anonymous callback
+
+	my $cb = cb {};
+
+=head2 cb name {}
+
+Create named callback with static name (Have no effect without C<$ENV{DEBUG_CB}>)
+
+	my $cb = cb mycallback {};
+
+=head2 cb $name {}
+
+Create named callback with dynamic name (Have no effect without C<$ENV{DEBUG_CB}>)
+$name could me only simple scalar identifier, without any special symbols
+
+	my $cb = cb $name {};
+	my $cb = cb $full::name {};
+
+=head2 cb 'name' {}
+
+Create named callback with dynamic name (Have no effect without C<$ENV{DEBUG_CB}>)
+Currently supported only ' and ". Quote-like operators support will be later
+
+	my $cb = cb 'name' {};
+	my $cb = cb "name.$val" {};
+
 =cut
 
 use Devel::Declare ();
@@ -58,47 +84,58 @@ BEGIN {
 	}
 }
 
+our @CARP_NOT = qw(Devel::Declare);
+our $SUB = 'cb';
+our %DEF;
+
 BEGIN {
 	if (DEBUG){
-		eval { require Sub::Identify; Sub::Identify->import('sub_fullname'); 1 } or *sub_fullname = sub { return };
-		eval { require Devel::Refcount; Devel::Refcount->import('refcount'); 1 } or *refcount = sub { 1 };
-		DEBUG > 1 and eval { require Devel::FindRef; *findref = \&Devel::FindRef::track;   1 } or *findref  = sub { "No Devel::FindRef installed\n" };
+		eval { require Sub::Identify;   Sub::Identify->import('sub_fullname'); 1 } or *sub_fullname = sub { return };
+		eval { require Sub::Name;       Sub::Name->import('subname');          1 } or *subname      = sub { $_[1] };
+		eval { require Devel::Refcount; Devel::Refcount->import('refcount');   1 } or *refcount     = sub { -1 };
+	}
+	if (DEBUG>1) {
+		eval { require Devel::FindRef;  *findref = \&Devel::FindRef::track; 1 } or *findref  = sub { "No Devel::FindRef installed\n" };
 	}
 }
 
-our $SUBNAME = 'cb';
-our %DEF;
 
 sub import{
 	my $class = shift;
 	my $caller = caller;
 	if (DEBUG) {
-		no strict 'refs';
-		*{$caller.'::'.$SUBNAME } = \&cb;
+		#no strict 'refs';
+		#*{$caller.'::'.$SUB } = \&cb;
 		*COUNT = sub {
 			for (keys %DEF) {
-				$DEF{$_}[1] or next;
-				my $name = sub_fullname($DEF{$_}[1]);
-				warn "Leaked: $_ ".($name ? $name : 'ANON')." (refs:".refcount($DEF{$_}[1]).") defined at $DEF{$_}[0]\n".(DEBUG > 1 ? findref($DEF{$_}[1]) : '' );
+				my $d = delete $DEF{$_};
+				$d->[0] or next;
+				my $name = $d->[4] ? $d->[1].'::cb.'.$d->[4] : sub_fullname($d->[0]) || $d->[1].'::cb.__ANON__';
+				substr($name,-10) eq '::__ANON__' and substr($name,-10) = '::cb.__ANON__';
+				warn "Leaked: $name (refs:".refcount($d->[0]).") defined at $d->[2] line $d->[3]\n".(DEBUG > 1 ? findref($d->[0]) : '' );
 			}
 		};
-		return;
+		#return;
 	} else {
+		*COUNT = sub {};
+	}
 		Devel::Declare->setup_for(
 			$caller,
-			{ $SUBNAME => { const => \&parse } }
+			{ $SUB => { const => \&parse } }
 		);
 		{
 			no strict 'refs';
-			*{$caller.'::'.$SUBNAME } = sub() {1 };
+			*{$caller.'::'.$SUB } = sub() { 1 };
 		}
-		*COUNT = sub {};
-	}
 }
 
 
-sub cb (&) {
-	$DEF{int $_[0]} = [ join(' line ',(caller())[1,2]), $_[0] ];weaken($DEF{int $_[0]}[1]);
+sub cb ($$) {
+	my $name = shift;
+	#$DEF{int $_[0]} = [ join(' line ',(caller())[1,2]), $_[0], $name ];weaken($DEF{int $_[0]}[1]);
+	$DEF{int $_[0]} = [ $_[0], (caller)[0..2], $name ];
+	weaken($DEF{int $_[0]}[0]);
+	subname($DEF{int $_[0]}[1].'::cb.'.$name => $_[0]) if $name;
 	return bless shift,'__cb__';
 };
 
@@ -110,8 +147,57 @@ sub parse {
 	my $offset = $_[1];
 	$offset += Devel::Declare::toke_move_past_token($offset);
 	$offset += Devel::Declare::toke_skipspace($offset);
+	my $name = 'undef';
+	my $line = Devel::Declare::get_linestr();
+	
+	if (
+		substr($line,$offset,1) =~ /^('|")/ # '
+		and my $len = Devel::Declare::toke_scan_str($offset)
+	){
+		my $lex = $1;
+		my $st = Devel::Declare::get_lex_stuff();
+		Devel::Declare::clear_lex_stuff();
+		#warn "Got lex $lex >$st<";
+		my $linestr = Devel::Declare::get_linestr();
+		if ( $len < 0 or $offset + $len > length($linestr) ) {
+			require Carp;
+			Carp::croak("Unbalanced text supplied");
+		}
+		substr($linestr, $offset, $len) = '';
+		Devel::Declare::set_linestr($linestr);
+		$name = qq{$lex$st$lex};
+		
+	}
+	elsif (my $len = Devel::Declare::toke_scan_word($offset, 1)) {
+		my $linestr = Devel::Declare::get_linestr();
+		$name = substr($linestr, $offset, $len);
+		substr($linestr, $offset, $len) = '';
+		Devel::Declare::set_linestr($linestr);
+		$offset += Devel::Declare::toke_skipspace($offset);
+		$name = qq{'$name'};
+		#warn "have tokescanword $name";
+	}
+	elsif (substr(my $line = Devel::Declare::get_linestr(),$offset,1) eq '$') {
+		if (my $len = Devel::Declare::toke_scan_word($offset+1, 1)) {
+			my $linestr = Devel::Declare::get_linestr();
+			$name = substr($linestr, $offset, $len+1);
+			substr($linestr, $offset, $len+1) = '';
+			Devel::Declare::set_linestr($linestr);
+			$offset += Devel::Declare::toke_skipspace($offset);
+			$name = qq{$name};
+			#warn "Have scalar identifier $name";
+		} else {
+			die("Bad syntax: $line at @{[ (caller 1)[1] ]}");
+		}
+	}
+	
 	my $linestr = Devel::Declare::get_linestr();
-	substr($linestr,$offset,0) = '&& sub';
+	if (DEBUG) {
+		substr($linestr,$offset,0) = '&& '.__PACKAGE__.'::cb '.$name.', sub ';
+	} else {
+		substr($linestr,$offset,0) = '&& sub ';
+	}
+	#warn $linestr;
 	Devel::Declare::set_linestr($linestr);
 	return;
 }

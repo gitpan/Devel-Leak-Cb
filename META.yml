@@ -22,15 +22,16 @@ no_index:
 provides:
   Devel::Leak::Cb:
     file: lib/Devel/Leak/Cb.pm
-    version: 0.01
+    version: 0.02
 recommends:
   Devel::FindRef: 0
   Devel::Refcount: 0
   Sub::Identify: 0
+  Sub::Name: 0
 requires:
   Devel::Declare: 0.005011
   common::sense: 2
   perl: 5.8.8
 resources:
   license: http://dev.perl.org/licenses/
-version: 0.01
+version: 0.02

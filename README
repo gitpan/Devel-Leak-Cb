@@ -2,12 +2,12 @@ NAME
     Devel::Leak::Cb - Detect leaked callbacks
 
 VERSION
-    Version 0.01
+    Version 0.02
 
 SYNOPSIS
         use Devel::Leak::Cb;
 
-    AnyEvent->timer( cb => cb {
+    AnyEvent->timer( after => 1, cb => cb {
         ...
         });
 
@@ -30,6 +30,32 @@ EXPORT
 
 FUNCTIONS
   cb {}
+    Create anonymous callback
+
+        my $cb = cb {};
+
+  cb name {}
+    Create named callback with static name (Have no effect without
+    $ENV{DEBUG_CB})
+
+        my $cb = cb mycallback {};
+
+  cb $name {}
+    Create named callback with dynamic name (Have no effect without
+    $ENV{DEBUG_CB}) $name could me only simple scalar identifier, without
+    any special symbols
+
+        my $cb = cb $name {};
+        my $cb = cb $full::name {};
+
+  cb 'name' {}
+    Create named callback with dynamic name (Have no effect without
+    $ENV{DEBUG_CB}) Currently supported only ' and ". Quote-like operators
+    support will be later
+
+        my $cb = cb 'name' {};
+        my $cb = cb "name.$val" {};
+
 AUTHOR
     Mons Anderson, "<mons at cpan.org>"
 

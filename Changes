@@ -1,5 +1,8 @@
 Revision history for Devel-Leak-Cb
 
+0.02    2009-10-27
+        Support for named callbacks
+
 0.01    2009-10-24
         First version
 
