@@ -1,5 +1,8 @@
 Revision history for Devel-Leak-Cb
 
+0.03    2009-11-09
+        Fix COUNT for requre but not use
+
 0.02    2009-10-27
         Support for named callbacks
 

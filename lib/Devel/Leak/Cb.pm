@@ -12,11 +12,11 @@ Devel::Leak::Cb - Detect leaked callbacks
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =cut
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 =head1 SYNOPSIS
 
@@ -93,6 +93,17 @@ BEGIN {
 		eval { require Sub::Identify;   Sub::Identify->import('sub_fullname'); 1 } or *sub_fullname = sub { return };
 		eval { require Sub::Name;       Sub::Name->import('subname');          1 } or *subname      = sub { $_[1] };
 		eval { require Devel::Refcount; Devel::Refcount->import('refcount');   1 } or *refcount     = sub { -1 };
+		*COUNT = sub {
+			for (keys %DEF) {
+				my $d = delete $DEF{$_};
+				$d->[0] or next;
+				my $name = $d->[4] ? $d->[1].'::cb.'.$d->[4] : sub_fullname($d->[0]) || $d->[1].'::cb.__ANON__';
+				substr($name,-10) eq '::__ANON__' and substr($name,-10) = '::cb.__ANON__';
+				warn "Leaked: $name (refs:".refcount($d->[0]).") defined at $d->[2] line $d->[3]\n".(DEBUG > 1 ? findref($d->[0]) : '' );
+			}
+		};
+	} else {
+		*COUNT = sub {};
 	}
 	if (DEBUG>1) {
 		eval { require Devel::FindRef;  *findref = \&Devel::FindRef::track; 1 } or *findref  = sub { "No Devel::FindRef installed\n" };
@@ -103,30 +114,14 @@ BEGIN {
 sub import{
 	my $class = shift;
 	my $caller = caller;
-	if (DEBUG) {
-		#no strict 'refs';
-		#*{$caller.'::'.$SUB } = \&cb;
-		*COUNT = sub {
-			for (keys %DEF) {
-				my $d = delete $DEF{$_};
-				$d->[0] or next;
-				my $name = $d->[4] ? $d->[1].'::cb.'.$d->[4] : sub_fullname($d->[0]) || $d->[1].'::cb.__ANON__';
-				substr($name,-10) eq '::__ANON__' and substr($name,-10) = '::cb.__ANON__';
-				warn "Leaked: $name (refs:".refcount($d->[0]).") defined at $d->[2] line $d->[3]\n".(DEBUG > 1 ? findref($d->[0]) : '' );
-			}
-		};
-		#return;
-	} else {
-		*COUNT = sub {};
+	Devel::Declare->setup_for(
+		$caller,
+		{ $SUB => { const => \&parse } }
+	);
+	{
+		no strict 'refs';
+		*{$caller.'::'.$SUB } = sub() { 1 };
 	}
-		Devel::Declare->setup_for(
-			$caller,
-			{ $SUB => { const => \&parse } }
-		);
-		{
-			no strict 'refs';
-			*{$caller.'::'.$SUB } = sub() { 1 };
-		}
 }
 
 

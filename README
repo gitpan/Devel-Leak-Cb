@@ -2,7 +2,7 @@ NAME
     Devel::Leak::Cb - Detect leaked callbacks
 
 VERSION
-    Version 0.02
+    Version 0.03
 
 SYNOPSIS
         use Devel::Leak::Cb;
