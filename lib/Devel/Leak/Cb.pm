@@ -12,11 +12,11 @@ Devel::Leak::Cb - Detect leaked callbacks
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =cut
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 =head1 SYNOPSIS
 
@@ -70,10 +70,17 @@ Currently supported only ' and ". Quote-like operators support will be later
 	my $cb = cb 'name' {};
 	my $cb = cb "name.$val" {};
 
+=head2 COUNT
+
+	You may call C<Devel::Leak::Cb::COUNT()> Manually to check state. All leaked callbacks will be warned. Noop without C<$ENV{DEBUG_CB}>
+
 =cut
 
 use Devel::Declare ();
 use Scalar::Util 'weaken';
+
+our @CARP_NOT = qw(Devel::Declare);
+our %DEF;
 
 BEGIN {
 	if ($ENV{DEBUG_CB}) {
@@ -84,18 +91,16 @@ BEGIN {
 	}
 }
 
-our @CARP_NOT = qw(Devel::Declare);
-our $SUB = 'cb';
-our %DEF;
 
 BEGIN {
 	if (DEBUG){
 		eval { require Sub::Identify;   Sub::Identify->import('sub_fullname'); 1 } or *sub_fullname = sub { return };
 		eval { require Sub::Name;       Sub::Name->import('subname');          1 } or *subname      = sub { $_[1] };
 		eval { require Devel::Refcount; Devel::Refcount->import('refcount');   1 } or *refcount     = sub { -1 };
-		*COUNT = sub {
+		*COUNT = sub () {
 			for (keys %DEF) {
 				my $d = delete $DEF{$_};
+				#print STDERR "Counting $_ [ @$d ]";
 				$d->[0] or next;
 				my $name = $d->[4] ? $d->[1].'::cb.'.$d->[4] : sub_fullname($d->[0]) || $d->[1].'::cb.__ANON__';
 				substr($name,-10) eq '::__ANON__' and substr($name,-10) = '::cb.__ANON__';
@@ -103,40 +108,45 @@ BEGIN {
 			}
 		};
 	} else {
-		*COUNT = sub {};
+		*COUNT = sub () {};
 	}
 	if (DEBUG>1) {
 		eval { require Devel::FindRef;  *findref = \&Devel::FindRef::track; 1 } or *findref  = sub { "No Devel::FindRef installed\n" };
 	}
 }
 
-
 sub import{
 	my $class = shift;
 	my $caller = caller;
 	Devel::Declare->setup_for(
 		$caller,
-		{ $SUB => { const => \&parse } }
+		{ 'cb' => { const => \&parse } }
 	);
 	{
 		no strict 'refs';
-		*{$caller.'::'.$SUB } = sub() { 1 };
+		*{$caller.'::cb' } = sub() { 1 };
 	}
 }
 
-
-sub cb ($$) {
-	my $name = shift;
-	#$DEF{int $_[0]} = [ join(' line ',(caller())[1,2]), $_[0], $name ];weaken($DEF{int $_[0]}[1]);
-	$DEF{int $_[0]} = [ $_[0], (caller)[0..2], $name ];
-	weaken($DEF{int $_[0]}[0]);
-	subname($DEF{int $_[0]}[1].'::cb.'.$name => $_[0]) if $name;
-	return bless shift,'__cb__';
-};
-
 sub __cb__::DESTROY {
+	#print STDERR "destroy $_[0]\n";
 	delete($DEF{int $_[0]});
 };
+
+our $LASTNAME;
+
+sub remebmer($) {
+	$LASTNAME = $_[0];
+	return 1;
+}
+
+sub wrapper (&) {
+	$DEF{int $_[0]} = [ $_[0], (caller)[0..2], $LASTNAME ];
+	weaken($DEF{int $_[0]}[0]);
+	subname($DEF{int $_[0]}[1].'::cb.'.$LASTNAME => $_[0]) if $LASTNAME;
+	$LASTNAME = undef;
+	return bless $_[0],'__cb__';
+}
 
 sub parse {
 	my $offset = $_[1];
@@ -170,7 +180,6 @@ sub parse {
 		Devel::Declare::set_linestr($linestr);
 		$offset += Devel::Declare::toke_skipspace($offset);
 		$name = qq{'$name'};
-		#warn "have tokescanword $name";
 	}
 	elsif (substr(my $line = Devel::Declare::get_linestr(),$offset,1) eq '$') {
 		if (my $len = Devel::Declare::toke_scan_word($offset+1, 1)) {
@@ -180,7 +189,6 @@ sub parse {
 			Devel::Declare::set_linestr($linestr);
 			$offset += Devel::Declare::toke_skipspace($offset);
 			$name = qq{$name};
-			#warn "Have scalar identifier $name";
 		} else {
 			die("Bad syntax: $line at @{[ (caller 1)[1] ]}");
 		}
@@ -188,12 +196,13 @@ sub parse {
 	
 	my $linestr = Devel::Declare::get_linestr();
 	if (DEBUG) {
-		substr($linestr,$offset,0) = '&& '.__PACKAGE__.'::cb '.$name.', sub ';
+		substr($linestr,$offset,0) = '&& Devel::Leak::Cb::remebmer('.$name.') && Devel::Leak::Cb::wrapper ';
+		Devel::Declare::set_linestr($linestr);
 	} else {
 		substr($linestr,$offset,0) = '&& sub ';
+		Devel::Declare::set_linestr($linestr);
 	}
 	#warn $linestr;
-	Devel::Declare::set_linestr($linestr);
 	return;
 }
 

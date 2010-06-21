@@ -151,7 +151,6 @@ sub import {
         print "[" . ( $FeatureMap{ lc($feature) } || $feature ) . "]\n";
 
         $modules = [ %{$modules} ] if UNIVERSAL::isa( $modules, 'HASH' );
-        $modules = [ @{$modules} ]; # Copy to keep original
 
         unshift @$modules, -default => &{ shift(@$modules) }
           if ( ref( $modules->[0] ) eq 'CODE' );    # XXX: bugward combatability
@@ -673,7 +672,20 @@ sub _load {
 sub _load_cpan {
     return if $CPAN::VERSION and $CPAN::Config and not @_;
     require CPAN;
-    if ( $CPAN::HandleConfig::VERSION ) {
+
+    # CPAN-1.82+ adds CPAN::Config::AUTOLOAD to redirect to
+    #    CPAN::HandleConfig->load. CPAN reports that the redirection
+    #    is deprecated in a warning printed at the user.
+
+    # CPAN-1.81 expects CPAN::HandleConfig->load, does not have
+    #   $CPAN::HandleConfig::VERSION but cannot handle
+    #   CPAN::Config->load
+
+    # Which "versions expect CPAN::Config->load?
+
+    if ( $CPAN::HandleConfig::VERSION
+        || CPAN::HandleConfig->can('load')
+    ) {
         # Newer versions of CPAN have a HandleConfig module
         CPAN::HandleConfig->load;
     } else {
@@ -803,4 +815,4 @@ END_MAKE
 
 __END__
 
-#line 1057
+#line 1069

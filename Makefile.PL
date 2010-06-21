@@ -3,7 +3,7 @@ use inc::Module::Install;
 use 5.008008;
 name     'Devel-Leak-Cb';
 all_from 'lib/Devel/Leak/Cb.pm';
-version   my $v = '0.03';
+version   my $v = '0.04';
 author   'Mons Anderson <mons@cpan.org>';
 license  'perl';
 

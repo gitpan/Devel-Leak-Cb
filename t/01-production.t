@@ -23,3 +23,4 @@ my $named;$named = cb name {
 $named->();
 
 ok 1, 'dummy';
+

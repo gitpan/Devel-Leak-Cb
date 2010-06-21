@@ -5,7 +5,6 @@ use lib::abs '../lib';
 use Test::More tests => 6;
 BEGIN { $ENV{DEBUG_CB} = 1 }
 use Devel::Leak::Cb;
-use Carp;
 
 my $sub;$sub = cb {
 	$sub;
@@ -35,3 +34,4 @@ END {
 		like $_[0],qr/^Leaked: main::cb\.(?:name|__ANON__)/, 'warn correct';
 	};
 }
+

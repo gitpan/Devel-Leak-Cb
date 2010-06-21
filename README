@@ -2,16 +2,16 @@ NAME
     Devel::Leak::Cb - Detect leaked callbacks
 
 VERSION
-    Version 0.03
+    Version 0.04
 
 SYNOPSIS
         use Devel::Leak::Cb;
 
-    AnyEvent->timer( after => 1, cb => cb {
+        AnyEvent->timer( after => 1, cb => cb {
         ...
         });
 
-    # If $ENV{DEBUG_CB} is true and callback not destroyed till END, the you'll be noticed
+        # If $ENV{DEBUG_CB} is true and callback not destroyed till END, the you'll be noticed
 
 DESCRIPTION
     By default, cb { .. } will be rewritten as sub { .. } using
@@ -55,6 +55,9 @@ FUNCTIONS
 
         my $cb = cb 'name' {};
         my $cb = cb "name.$val" {};
+
+  COUNT
+        You may call C<Devel::Leak::Cb::COUNT()> Manually to check state. All leaked callbacks will be warned. Noop without C<$ENV{DEBUG_CB}>
 
 AUTHOR
     Mons Anderson, "<mons at cpan.org>"
